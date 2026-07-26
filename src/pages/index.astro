@@ -1,17 +1,84 @@
 ---
+// src/pages/index.astro
+import Layout from '../layouts/Layout.astro';
+import { CentralizedTable } from '../components/CentralizedTable';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { ScoreboardData, ParticipantRow, StudentMetadata } from '../types/scoreboard';
 
+function parseCSV(filePath: string, id: string, title: string, weight: number): ScoreboardData {
+  try {
+    const fullPath = path.resolve(filePath);
+    const fileContent = fs.readFileSync(fullPath, 'utf-8');
+    
+    const lines = fileContent.replace(/\r/g, '').split('\n').filter(line => line.trim() !== '');
+    if (lines.length === 0) return { id, title, weight, problemsCount: 0, results: [] };
+
+    const headers = lines[0].split(',');
+    const problemHeaders = headers.filter(h => h.startsWith('P'));
+    
+    const results: ParticipantRow[] = lines.slice(1).map(line => {
+      const values = line.split(',');
+      const row: ParticipantRow = { id: values[0].trim() }; // Identificador por ID
+      
+      headers.forEach((header, index) => {
+        if (header.startsWith('P')) {
+          const parsedValue = parseInt(values[index], 10);
+          row[header as `P${number}`] = isNaN(parsedValue) ? 0 : Math.max(0, Math.min(7, parsedValue));
+        }
+      });
+      
+      return row;
+    });
+
+    return { id, title, weight, problemsCount: problemHeaders.length, results };
+  } catch (error) {
+    console.error(`Error parsing file ${filePath}:`, error);
+    return { id, title, weight, problemsCount: 0, results: [] };
+  }
+}
+
+function parseMetadataCSV(filePath: string): StudentMetadata[] {
+  try {
+    const fullPath = path.resolve(filePath);
+    const fileContent = fs.readFileSync(fullPath, 'utf-8');
+    const lines = fileContent.replace(/\r/g, '').split('\n').filter(line => line.trim() !== '');
+    if (lines.length <= 1) return [];
+
+    return lines.slice(1).map(line => {
+      const [id, name, age, yearsInProcess] = line.split(',');
+      return {
+        id: id.trim(),
+        name: name.trim(),
+        age: parseInt(age, 10) || 0,
+        yearsInProcess: parseInt(yearsInProcess, 10) || 0
+      };
+    });
+  } catch (error) {
+    console.error("Error al parsear metadatos:", error);
+    return [];
+  }
+}
+
+const exam1 = parseCSV('./src/data/scoreboard_a.csv', 'exam-1', 'Examen 1', 0.25);
+const exam2 = parseCSV('./src/data/scoreboard_b.csv', 'exam-2', 'Examen 2', 0.35);
+const exam3 = parseCSV('./src/data/scoreboard_c.csv', 'exam-3', 'Examen 3', 0.40);
+const studentMetadata = parseMetadataCSV('./src/data/student_metadata.csv');
+
+const allExams = [exam1, exam2, exam3];
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<Layout title="Dashboard Relacional | Neo-Swiss Scoreboard">
+  <main class="max-w-6xl mx-auto px-4 py-12 font-sans selection:bg-yellow-300">
+    <header class="mb-12 border-b-8 border-black pb-6">
+      <h1 class="text-5xl md:text-7xl font-black tracking-tighter leading-none uppercase">
+        Puntajes Rumbo a<br/>40 OMM
+      </h1>
+      <p class="text-lg mt-4 font-medium tracking-tight text-gray-700 max-w-xl">     </p>
+    </header>
+
+    <section class="mt-8">
+      <CentralizedTable scoreboards={allExams} studentMetadata={studentMetadata} client:load />
+    </section>
+  </main>
+</Layout>
